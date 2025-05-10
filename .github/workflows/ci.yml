@@ -1,13 +1,13 @@
-name: Juice Shop CI/CD
+name: Security CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
   pull_request:
-    branches:
-      - master
+    branches: [ master ]
 
+jobs:
+  # --- SAST: CodeQL и Semgrep ---
   sast:
     runs-on: ubuntu-latest
     permissions:
@@ -15,18 +15,43 @@ on:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v2
         with:
           languages: javascript
-        
-      - name: Build project
+
+      - name: Install dependencies
         run: npm install
-        
-      - name: Perform CodeQL Analysis
+
+      - name: Analyze code with CodeQL
         uses: github/codeql-action/analyze@v2
 
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/default"
+
+  # --- Build & Test ---
+  build:
+    runs-on: ubuntu-latest
+    needs: sast
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # --- DAST: OWASP ZAP ---
   dast:
     runs-on: ubuntu-latest
     needs: build
@@ -36,26 +61,23 @@ on:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Стартуем Juice Shop как внешний процесс
       - name: Start Juice Shop
         run: |
           apt-get update && apt-get install -y curl gnupg
           curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
           apt-get install -y nodejs
           npm ci
-          npm start &  # стартуем сервер
-          sleep 15     # даём время на запуск
+          npm start &
+          sleep 15
 
-      # Запускаем ZAP Full Scan
       - name: Run OWASP ZAP Scan
         run: |
           zap-full-scan.py \
             -t http://host.docker.internal:3000 \
             -r zap-report.html \
             -J zap-report.json \
-            -d -I || true  # Не падаем, даже если найдены уязвимости
+            -d -I || true
 
-      # Сохраняем отчёт
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v3
         with:
