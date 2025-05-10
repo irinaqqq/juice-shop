@@ -50,7 +50,9 @@ jobs:
     needs: build-and-test
     steps:
       - name: Start Juice Shop
-        run: npm start &
+        run: |
+          npm start &
+          sleep 10  # Задержка для запуска сервера
       
       - name: Run OWASP ZAP Scan
         uses: zaproxy/action-full-scan@v0.8.0
